@@ -1,41 +1,60 @@
-import React, { useState } from 'react';
-import { MessageSquare, Plus, Tag, Smile, Frown, Meh, BarChart2 } from 'lucide-react';
-
-const MOCK_PROJECTS = [
-  { id: '1', name: 'Mobile App v2', description: 'Main iOS and Android application' },
-  { id: '2', name: 'SaaS Dashboard', description: 'Web analytics portal' }
-];
-
-const MOCK_FEEDBACKS = [
-  { id: '101', projectId: '1', content: 'App crashes on checkout screen!', category: 'bug', sentiment: 'negative', createdAt: '2026-10-18' },
-  { id: '102', projectId: '1', content: 'Love the new dark mode toggle feature.', category: 'praise', sentiment: 'positive', createdAt: '2026-10-19' },
-  { id: '103', projectId: '2', content: 'Please add CSV export option for analytics.', category: 'feature_request', sentiment: 'neutral', createdAt: '2026-10-19' }
-];
+import React, { useState, useEffect } from 'react';
+import { MessageSquare, Plus, Tag, Smile, Frown, Meh, BarChart2, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const [projects] = useState(MOCK_PROJECTS);
-  const [selectedProjectId, setSelectedProjectId] = useState('1');
-  const [feedbacks, setFeedbacks] = useState(MOCK_FEEDBACKS);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [feedbacks, setFeedbacks] = useState([]);
   const [newFeedbackText, setNewFeedbackText] = useState('');
   const [category, setCategory] = useState('bug');
+  const [loading, setLoading] = useState(false);
 
-  const filteredFeedbacks = feedbacks.filter(f => f.projectId === selectedProjectId);
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/projects');
+      const data = await res.json();
+      setProjects(data);
+      if (data.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(data[0].id);
+        setFeedbacks(data[0].feedbacks || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch projects', err);
+    }
+  };
 
-  const handleAddFeedback = (e) => {
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  useEffect(() => {
+    const currentProj = projects.find(p => p.id === selectedProjectId);
+    if (currentProj) {
+      setFeedbacks(currentProj.feedbacks || []);
+    }
+  }, [selectedProjectId, projects]);
+
+  const handleAddFeedback = async (e) => {
     e.preventDefault();
-    if (!newFeedbackText.trim()) return;
+    if (!newFeedbackText.trim() || !selectedProjectId) return;
 
-    const newItem = {
-      id: Date.now().toString(),
-      projectId: selectedProjectId,
-      content: newFeedbackText,
-      category: category,
-      sentiment: category === 'bug' ? 'negative' : category === 'praise' ? 'positive' : 'neutral',
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-
-    setFeedbacks([newItem, ...feedbacks]);
-    setNewFeedbackText('');
+    setLoading(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/projects/${selectedProjectId}/feedbacks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newFeedbackText, category })
+      });
+      
+      if (res.ok) {
+        setNewFeedbackText('');
+        await fetchProjects();
+      }
+    } catch (err) {
+      console.error('Failed to add feedback', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getSentimentIcon = (sentiment) => {
@@ -49,9 +68,14 @@ export default function App() {
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-xl font-bold text-gray-800">FeedbackPulse AI</h1>
+          <h1 className="text-xl font-bold text-gray-800">FeedbackPulse AI (Live SQLite)</h1>
         </div>
-        <span className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200">Mock Service Active</span>
+        <button 
+          onClick={fetchProjects}
+          className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh Data
+        </button>
       </header>
 
       <div className="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -79,12 +103,12 @@ export default function App() {
 
         <div className="md:col-span-2 space-y-6">
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="text-md font-semibold text-gray-700 mb-3">Submit Feedback (Mock Ingestion)</h3>
+            <h3 className="text-md font-semibold text-gray-700 mb-3">Submit Feedback (Saved to SQLite)</h3>
             <form onSubmit={handleAddFeedback} className="space-y-3">
               <textarea
                 value={newFeedbackText}
                 onChange={(e) => setNewFeedbackText(e.target.value)}
-                placeholder="Enter feedback or issue details..."
+                placeholder="Enter feedback or bug details..."
                 className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none border-gray-300"
                 rows="2"
               />
@@ -100,20 +124,21 @@ export default function App() {
                 </select>
                 <button
                   type="submit"
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-1"
+                  disabled={loading}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-1 disabled:opacity-50"
                 >
-                  <Plus className="w-4 h-4" /> Add Feedback
+                  <Plus className="w-4 h-4" /> {loading ? 'Saving...' : 'Add Feedback'}
                 </button>
               </div>
             </form>
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Recent Feedbacks ({filteredFeedbacks.length})</h3>
-            {filteredFeedbacks.length === 0 ? (
+            <h3 className="text-md font-semibold text-gray-700">Project Feedbacks ({feedbacks.length})</h3>
+            {feedbacks.length === 0 ? (
               <p className="text-sm text-gray-500">No feedbacks recorded for this project yet.</p>
             ) : (
-              filteredFeedbacks.map((f) => (
+              feedbacks.map((f) => (
                 <div key={f.id} className="p-4 rounded-lg border border-gray-100 bg-gray-50 flex items-start justify-between">
                   <div>
                     <p className="text-sm text-gray-800">{f.content}</p>
@@ -121,7 +146,7 @@ export default function App() {
                       <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-700 font-mono flex items-center gap-1">
                         <Tag className="w-3 h-3" /> {f.category}
                       </span>
-                      <span className="text-xs text-gray-400">{f.createdAt}</span>
+                      <span className="text-xs text-gray-400">{f.createdAt?.split('T')[0]}</span>
                     </div>
                   </div>
                   <div>{getSentimentIcon(f.sentiment)}</div>
