@@ -1,20 +1,21 @@
-FROM node:18-alpine AS frontend-builder
+# --- build frontend ---
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:18-alpine AS runner
+# --- runtime: backend + static frontend ---
+FROM node:20-alpine
+RUN apk add --no-cache openssl
 WORKDIR /app
+ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm install --production
-COPY . .
-COPY --from=frontend-builder /app/dist ./dist
-
+RUN npm ci --omit=dev
+COPY prisma ./prisma
 RUN npx prisma generate
-
-ENV PORT=3000
+COPY server.js ./
+COPY --from=frontend-builder /app/dist ./dist
 EXPOSE 3000
-
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]

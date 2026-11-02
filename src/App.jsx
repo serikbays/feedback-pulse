@@ -11,7 +11,7 @@ export default function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/projects');
+      const res = await fetch('/api/v1/projects');
       const data = await res.json();
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
@@ -40,7 +40,7 @@ export default function App() {
 
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/projects/${selectedProjectId}/feedbacks`, {
+      const res = await fetch(`/api/v1/projects/${selectedProjectId}/feedbacks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newFeedbackText, category })

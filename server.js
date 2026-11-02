@@ -1,79 +1,68 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import sqlite3 from 'sqlite3';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { PrismaClient } from '@prisma/client';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const prisma = new PrismaClient();
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-// Открываем базу данных SQLite в файле dev.db
-const db = new sqlite3.Database('./dev.db', (err) => {
-  if (err) console.error('Error opening database', err.message);
-  else console.log('Connected to SQLite database.');
-});
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-// Создаем таблицы, если их нет
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS feedbacks (
-    id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    category TEXT DEFAULT 'general',
-    sentiment TEXT DEFAULT 'neutral',
-    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-    projectId TEXT,
-    FOREIGN KEY(projectId) REFERENCES projects(id) ON DELETE CASCADE
-  )`);
-});
-
-// GET /api/v1/projects - получить все проекты вместе с фидбеками
-app.get('/api/v1/projects', (req, res) => {
-  db.all(`SELECT * FROM projects`, [], (err, projects) => {
-    if (err) return res.status(500).json({ error: err.message });
-    
-    db.all(`SELECT * FROM feedbacks`, [], (err, feedbacks) => {
-      if (err) return res.status(500).json({ error: err.message });
-      
-      const result = projects.map(p => ({
-        ...p,
-        feedbacks: feedbacks.filter(f => f.projectId === p.id)
-      }));
-      res.json(result);
+// GET /api/v1/projects - все проекты вместе с отзывами
+app.get('/api/v1/projects', async (req, res) => {
+  try {
+    const projects = await prisma.project.findMany({
+      include: { feedbacks: true },
+      orderBy: { createdAt: 'asc' },
     });
-  });
+    res.json(projects);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/v1/projects - создать проект
-app.post('/api/v1/projects', (req, res) => {
+app.post('/api/v1/projects', async (req, res) => {
   const { name, description } = req.body;
-  const id = Date.now().toString();
-  db.run(`INSERT INTO projects (id, name, description) VALUES (?, ?, ?)`, [id, name, description], function(err) {
-    if (err) return res.status(400).json({ error: err.message });
-    res.status(201).json({ id, name, description });
-  });
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  try {
+    const project = await prisma.project.create({ data: { name, description } });
+    res.status(201).json(project);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // POST /api/v1/projects/:id/feedbacks - добавить отзыв
-app.post('/api/v1/projects/:id/feedbacks', (req, res) => {
+app.post('/api/v1/projects/:id/feedbacks', async (req, res) => {
   const { content, category } = req.body;
-  const id = Date.now().toString();
-  const sentiment = category === 'bug' ? 'negative' : category === 'praise' ? 'positive' : 'neutral';
-  const projectId = req.params.id;
-
-  db.run(`INSERT INTO feedbacks (id, content, category, sentiment, projectId) VALUES (?, ?, ?, ?, ?)`, 
-    [id, content, category || 'general', sentiment, projectId], function(err) {
-      if (err) return res.status(400).json({ error: err.message });
-      res.status(201).json({ id, content, category, sentiment, projectId });
+  if (!content || !content.trim()) {
+    return res.status(400).json({ error: 'content is required' });
+  }
+  const cat = category || 'general';
+  const sentiment = cat === 'bug' ? 'negative' : cat === 'praise' ? 'positive' : 'neutral';
+  try {
+    const feedback = await prisma.feedback.create({
+      data: { content, category: cat, sentiment, projectId: req.params.id },
     });
+    res.status(201).json(feedback);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-const PORT = 8000;
-app.listen(PORT, () => {
-  console.log(`Backend server running on http://localhost:${PORT}`);
-});
+// Собранный фронтенд (Vite) как статика
+const dist = path.join(__dirname, 'dist');
+app.use(express.static(dist));
+app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
