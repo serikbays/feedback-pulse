@@ -68,7 +68,7 @@ export default function App() {
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-xl font-bold text-gray-800">FeedbackPulse AI (Live SQLite)</h1>
+          <h1 className="text-xl font-bold text-gray-800">FeedbackPulse AI (Live PostgreSQL)</h1>
         </div>
         <button 
           onClick={fetchProjects}
@@ -103,7 +103,7 @@ export default function App() {
 
         <div className="md:col-span-2 space-y-6">
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="text-md font-semibold text-gray-700 mb-3">Submit Feedback (Saved to SQLite)</h3>
+            <h3 className="text-md font-semibold text-gray-700 mb-3">Submit Feedback (Saved to PostgreSQL)</h3>
             <form onSubmit={handleAddFeedback} className="space-y-3">
               <textarea
                 value={newFeedbackText}
